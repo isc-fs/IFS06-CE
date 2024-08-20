@@ -48,10 +48,11 @@ ADC_HandleTypeDef hadc2;
 
 FDCAN_HandleTypeDef hfdcan1;
 FDCAN_HandleTypeDef hfdcan2;
-FDCAN_HandleTypeDef hfdcan3;
 
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim16;
 
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -66,11 +67,11 @@ static void MX_ADC1_Init(void);
 static void MX_ADC2_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_FDCAN2_Init(void);
-static void MX_FDCAN3_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_TIM16_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -100,7 +101,7 @@ int start_button_ant = 0; //1
 // ---------- VARIABLES DE LECTURA DE SENSORES ----------
 
 // Inversor
-int inv_dc_bus_voltage; // Lectura de DC_BUS_VOLTAGE
+int inv_dc_bus_voltage = 0; // Lectura de DC_BUS_VOLTAGE
 int inv_t_motor;        // Lectura de motor temperature
 int inv_t_igbt;         // Lectura de power stage temperature
 int inv_t_air;          // Lectura de air temperature
@@ -120,24 +121,26 @@ float v_celda_min = 3600; // Contiene el ultimo valor de tension minima de una c
 
 // ---------- VARIABLES DE CONTROL DEL INVERSOR ----------
 int porcentaje_pedal_acel;
-int torque_1;
-int torque_2;
-int torque_total;
+uint16_t torque_1;
+uint16_t torque_2;
+uint16_t torque_total;
 int torque_limitado;
+uint16_t real_torque;
 int media_s_acel;
+uint8_t state = 0;
 
 // Revisar normativa
 int flag_EV_2_3 = 0;
 int flag_T11_8_9 = 0;
 int count_T11_8_9 = 0;
 
-// ---------- VARIABLES DE CONTROL DEL TIEMPO ----------
-//hay que añadirlas (*%*)
-
 
 char uart_msg[100];
+uint8_t error = 0;
+
 void print(char uart_buffer[]);
 void printValue(int value);
+void printHex(uint8_t value);
 
 void ADC1_Select_SF(void);
 void ADC1_Select_SA1(void);
@@ -148,6 +151,8 @@ void ADC2_Select_FR(void);
 void ADC2_Select_RL(void);
 void ADC2_Select_RR(void);
 
+uint8_t setTorque(void);
+
 /* USER CODE END 0 */
 
 /**
@@ -156,7 +161,9 @@ void ADC2_Select_RR(void);
   */
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
+
 
   /* USER CODE END 1 */
 
@@ -185,189 +192,148 @@ int main(void)
   MX_ADC2_Init();
   MX_FDCAN1_Init();
   MX_FDCAN2_Init();
-  MX_FDCAN3_Init();
   MX_TIM1_Init();
   MX_USART2_UART_Init();
+  MX_TIM16_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
   //Inicialización de buses CAN
-  HAL_FDCAN_Start(&hfdcan1); //Inversor
-  HAL_FDCAN_Start(&hfdcan2); //Acumulador
-  HAL_FDCAN_Start(&hfdcan3); //Sensores
+
+  //Inversor
+  if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK){
+#if DEBUG
+print("Error al inicializar CAN_INV");
+#endif
+  }
+
+  //Acumulador
+  if (HAL_FDCAN_Start(&hfdcan2) != HAL_OK){
+#if DEBUG
+print("Error al inicializar CAN_ACU");
+#endif
+  }
+
+  if (HAL_FDCAN_ActivateNotification(&hfdcan2, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) != HAL_OK)
+  {
+#if DEBUG
+print("Error al activar NOTIFICATION CAN_ACU");
+#endif
+  }
 
 
-  // ---------- SECUENCIA DE ARRANQUE ----------
+  //---------- SECUENCIA DE ARRANQUE ----------
 
-  // Configuración para recibir el registro DC_BUS_VOLTAGE del inversor cada 100ms
-  //Revisar por nuevo inversor
+  //Espera ACK inversor (DC bus)
   while (config_inv_lectura_v == 0){
-
-	  TxHeader_Inv.Identifier = rxID_inversor;
-	  TxHeader_Inv.DataLength = 3;
-	  TxData_Inv[0] = READ;
-	  TxData_Inv[1] = DC_BUS_VOLTAGE;
-	  TxData_Inv[2] = INV_DATA_PERIOD;
-	  if(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv) == HAL_OK){
-#if DEBUG
-	print("Solicitar tensión");
+#if(DEBUG)
+print("Solicitar tensión inversor");
 #endif
-	  }
-	  HAL_Delay(DELAY_CONFIG);
-
-	  //Espera ACK inversor
-	  if(HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader_Inv, RxData_Inv) == HAL_OK){
-		  if(RxHeader_Inv.Identifier == txID_inversor && RxHeader_Inv.DataLength == 4 && RxData_Inv[0] == DC_BUS_VOLTAGE){
+	if(HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader_Inv, RxData_Inv) == HAL_OK){
+		if(RxHeader_Inv.Identifier == TX_STATE_7 && RxHeader_Inv.DataLength == 6){
+			config_inv_lectura_v = 1; //Sale del bucle
 #if DEBUG
-	print("CAN_INV: Configurado lectura de DC_BUS_VOLTAGE correctamente");
+print("CAN_INV: Lectura de DC_BUS_VOLTAGE correctamente");
 #endif
-			  config_inv_lectura_v = 1; //Sale del bucle
-		  }
-	  }
+		}
+	}
   }
 
-#if DEBUG
-  	print("Pre-carga");
-#endif
+  //Estado STAND BY inversor
+  while(state!=3){
+	HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader_Inv, RxData_Inv);
+	if(RxHeader_Inv.Identifier == TX_STATE_3){
+		state = RxData_Inv[2]>>0x1;
+	}
+  }
 
+	//PRE-CHARGE
   while(precarga_inv == 0){
-
-	  //Lectura DC_BUS_VOLTAGE del CAN_INV
-	  if(HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader_Inv, RxData_Inv) == HAL_OK){
-		  if(RxHeader_Inv.Identifier == txID_inversor && RxHeader_Inv.DataLength == 4 && RxData_Inv[0] == DC_BUS_VOLTAGE){
-			  inv_dc_bus_voltage = ((int)RxData_Inv[2] << 8 | (int)RxData_Inv[1]) / CONV_DC_BUS_VOLTAGE;
-		  }
 #if DEBUG
-	print("DC_BUS_VOLTAGE (V):");
-	printValue(inv_dc_bus_voltage);
+print("Precarga");
+#endif
+	//Lectura DC_BUS_VOLTAGE del CAN_INV
+	if(HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader_Inv, RxData_Inv) == HAL_OK){
+		if(RxHeader_Inv.Identifier == TX_STATE_7 && RxHeader_Inv.DataLength == 6){
+			uint8_t byte0 = RxData_Inv[0];
+			uint8_t byte1 = RxData_Inv[1];
+			printHex(byte0);
+			printHex(byte1);
+			//inv_dc_bus_voltage = (int)((byte1<<8)|byte0);
+#if DEBUG
+print("DC_BUS_VOLTAGE (V):");
+printValue((int)((byte1<<8)|byte0));
 #endif
 
-		//Reenvío DC_BUS_VOLTAGE al AMS por CAN acumulador
-	  	TxHeader_Acu.Identifier = ID_dc_bus_voltage;
-	  	TxHeader_Acu.DataLength = 2;
-	    TxData_Acu[0] = inv_dc_bus_voltage >> 8 & 0xFF;
-	    TxData_Acu[1] = inv_dc_bus_voltage & 0xFF;
-	    if(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &TxHeader_Acu, TxData_Acu) == HAL_OK){
+			//Reenvío DC_BUS_VOLTAGE al AMS por CAN_ACU
+			TxHeader_Acu.Identifier = ID_dc_bus_voltage;
+			TxHeader_Acu.DataLength = 2;
+			TxHeader_Acu.IdType = FDCAN_EXTENDED_ID;
+			TxHeader_Acu.FDFormat = FDCAN_CLASSIC_CAN;
+			TxHeader_Acu.TxFrameType = FDCAN_DATA_FRAME;
+
+			TxData_Acu[0] = byte0;
+			TxData_Acu[1] = byte1;
+			if(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &TxHeader_Acu, TxData_Acu) == HAL_OK){
 #if DEBUG
-	print("CAN_ACU: DC_BUS_VOLTAGE enviado a AMS");
+print("CAN_ACU: DC_BUS_VOLTAGE enviado a AMS");
 #endif
+			}
+
 	    }
-	  }
-
-	  //Espera a recibir el Ok Pre-Carga del AMS
-	  if(HAL_FDCAN_GetRxMessage(&hfdcan2, FDCAN_RX_FIFO0, &RxHeader_Acu, RxData_Acu) == HAL_OK){
-		  if(RxHeader_Acu.Identifier == ID_ack_precarga && RxHeader_Acu.DataLength == 1 && RxData_Acu[0] == 0){
-			  precarga_inv = 1; //Precarga ready
-#if DEBUG
-	print("CAN_ACU: Precarga correcta");
-#endif
-		  }
-	  }
+	}
   }
 
-  // Comprobación ECU Telemería ON (*%*)
-
-  // Comprobación si el inversor está READY-TO-START (RTS) (RFE y RUN pulsados)
-  while(RTS_inv == 0){
-	  //Se pide el registro de RFE y RUN para comprobar estado
-	  TxHeader_Inv.Identifier = rxID_inversor;
-	  TxHeader_Inv.DataLength = 3;
-	  TxData_Inv[0] = READ;
-	  TxData_Inv[1] = RFE_RUN;
-	  TxData_Inv[2] = 0x00; //Time interval (transmitting once)
-	  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
-
-	  if(HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader_Inv, RxData_Inv)){
-		  if(RxHeader_Inv.Identifier == txID_inversor && RxHeader_Inv.DataLength == 4 /*COMPROBAR*/ && RxData_Inv[0] == RFE_RUN && (RxData_Inv[1]&RFE_RUN_EN) == RFE_RUN_EN){
-			  RTS_inv = 1;
 #if DEBUG
-	print("CAN_INV: Inversor RTS");
+print("state : stand by");
 #endif
-		  }
-	  }
-	  HAL_Delay(DELAY_CONFIG);
-  }
+
+/*
+ * TIM16 -> APB2 => 264MHzw
+ * 10 ms interruption => 10ms * 264MHz = 2640000
+ * prescalado 264 (por ejemplo)
+ * timer count = 2640000 / 264 = 10000
+ */
+  HAL_TIM_Base_Start_IT(&htim16);
 
 
-  //Comprobar BTB Inversor (preparar para controlar por torque)
-  if(BTB_todo == 0){
-	  while(BTB_inv_1 == 0){
-		  //Transmitting transmission request BTB
-		  TxHeader_Inv.Identifier = rxID_inversor;
-		  TxHeader_Inv.DataLength = 3;
-		  TxData_Inv[0] = READ;
-		  TxData_Inv[1] = BTB;
-		  TxData_Inv[2] = 0x00;
-		  if(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv)){
-#if DEBUG
-	print("Transmitting transmission request BTB");
-#endif
-		  }
-
-		  // Receiving BTB 0xE2
-		  if(HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader_Inv, RxData_Inv)){
-			  if(RxHeader_Inv.Identifier == txID_inversor && RxHeader_Inv.DataLength == 4 && RxData_Inv[0] == BTB && RxData_Inv[2] == 0x00 && RxData_Inv[3] == 0x00){
-				  if(RxData_Inv[1] == 0x01){
-					  BTB_inv_1 = 1;
-#if DEBUG
-	print("CAN_INV: BTB correcto, listo para arrancar");
-#endif
-				  }
-				  else{
-#if DEBUB
-	print("CAN_INV: BTB erróneo. No se puede arrancar");
-#endif
-				  }
-			  }
-		  }
-		  HAL_Delay(DELAY_CONFIG);
-	  }
-
-	  //Transmiting disable
-	  TxHeader_Inv.Identifier = rxID_inversor;
-	  TxHeader_Inv.DataLength = 3;
-	  TxData_Inv[0] = MODE;
-	  TxData_Inv[1] = 0x04;
-	  TxData_Inv[2] = 0x00;
-	  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
-
-	  //Transmitting transmission request enable (hardware)
-	  TxHeader_Inv.Identifier = rxID_inversor;
-	  TxHeader_Inv.DataLength = 3;
-	  TxData_Inv[0] = READ;
-	  TxData_Inv[1] = I_FRG;
-	  TxData_Inv[2] = 0x00;
-	  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
-
-	  while(BTB_inv_2 == 0){
-		  //Receiving enable 0xE8
-		  HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader_Inv, RxData_Inv);
-		  if(RxHeader_Inv.Identifier == txID_inversor && RxHeader_Inv.DataLength == 4 && RxData_Inv[0] == I_FRG  && RxData_Inv[1] == 0x01 && RxData_Inv[2] == 0x00 && RxData_Inv[3] == 0x00){
-			  BTB_inv_2 = 1;
-#if DEBUG
-			  print("CAN_INV: enable 0xE8 recibido correctamente");
-#endif
-		  }
-		  HAL_Delay(DELAY_CONFIG);
-	  }
-  }
-
-  //Transmitting no disable (enable)
-  TxHeader_Inv.Identifier = rxID_inversor;
+  //Estado READY inversor
+  TxHeader_Inv.Identifier = RX_SETPOINT_1;
   TxHeader_Inv.DataLength = 3;
-  TxData_Inv[0] = MODE;
-  TxData_Inv[1] = 0x00;
-  TxData_Inv[2] = 0x00;
+  TxHeader_Inv.IdType = FDCAN_STANDARD_ID;
+
+  TxData_Inv[0] = 0x0;
+  TxData_Inv[1] = 0x0;
+  TxData_Inv[2] = 0x4;
   HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
-
-  //Peticiones de envío de datos de telemetría a inversor (*%*)
+  while(state!=4){
+	  HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader_Inv, RxData_Inv);
+	  if(RxHeader_Inv.Identifier == TX_STATE_3){
+		  state = RxData_Inv[2]>>0x1;
+	  }
+  }
 #if DEBUG
-  print("Peticiones inversor");
+print("state: ready");
 #endif
 
-  //Ready To Start
-#if DEBUG
-  print("RTS");
-#endif
+
+  //Estado TORQUE inversor
+  TxHeader_Inv.Identifier = RX_SETPOINT_1;
+  TxHeader_Inv.DataLength = 3;
+  TxHeader_Inv.IdType = FDCAN_STANDARD_ID;
+
+
+  TxData_Inv[0] = 0x0;
+  TxData_Inv[1] = 0x0;
+  TxData_Inv[2] = 0x6;
+  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
+  while(state!=6){
+	  HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader_Inv, RxData_Inv);
+	  if(RxHeader_Inv.Identifier == TX_STATE_3){
+		  state = RxData_Inv[2]>>0x1;
+	  }
+  }
+
 
   //Espera a que se pulse el botón de arranque mientras se pisa el freno
   while(boton_arranque == 0){
@@ -381,50 +347,44 @@ int main(void)
 		  HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
 		  s_freno= HAL_ADC_GetValue(&hadc1);
 		  HAL_ADC_Stop(&hadc1);
-
 #if DEBUG
-	print("Freno:");
-	printValue(s_freno);
+print("Botón Start + Freno:");
+printValue(s_freno);
 #endif
-
-		if(s_freno>UMBRAL_FRENO){
-			boton_arranque = 1;
-
+		  if(s_freno>UMBRAL_FRENO){
+			  boton_arranque = 1;
 #if DEBUG
-	print("Coche arrancado correctamente");
+print("Coche arrancado correctamente");
 #endif
-
-		}
-		else{
-
+		  }
+		  else{
 #if DEBUG
-	print("Pulsar freno para arrancar");
+print("Pulsar freno para arrancar");
 #endif
-
-		}
+		  }
 	  }
   }
 
+
   // Activar READY-TO-DRIVE-SOUND (RTDS) durante 2s
 #if DEBUG
-  print("RTDS sonando");
+print("RTDS sonando");
 #endif
-
   HAL_GPIO_WritePin(START_BUTTON_LED_GPIO_Port, START_BUTTON_LED_Pin, GPIO_PIN_SET); //Apaga LED botón
   HAL_GPIO_WritePin(RTDS_GPIO_Port, RTDS_Pin, GPIO_PIN_SET); //Enciende RTDS
   HAL_Delay(2000);
   HAL_GPIO_WritePin(RTDS_GPIO_Port, RTDS_Pin, GPIO_PIN_RESET); //Apaga RTDS
-
 #if DEBUG
   print("RTDS apagado");
 #endif
 
+
   // Avisar a resto de ECUs de que pueden comenzar ya a mandar datos al CAN (RTD_all)
   // Inicia telemetria y activa los ventiladores
-  TxHeader_Acu.Identifier = ID_RTD_all;
+  /*TxHeader_Acu.Identifier = ID_RTD_all;
   TxHeader_Acu.DataLength = 1;
   TxData_Acu[0] = 1;
-  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &TxHeader_Acu, TxData_Acu);
+  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &TxHeader_Acu, TxData_Acu);*/
 
 
   /* USER CODE END 2 */
@@ -433,164 +393,34 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  // ---------- CONTROL DEL INVERSOR ----------
+		//Estado TORQUE inversor
+		TxHeader_Inv.Identifier = RX_SETPOINT_1;
+		TxHeader_Inv.DataLength = 3;
+		TxHeader_Inv.IdType = FDCAN_STANDARD_ID;
 
-	  	  // Envío datos inversor
-	  	  if(DEBUG /*timer_send_torque_inverter.check**********************/){
-	  		  // Leemos sensores de posición del pedal de acelaración
-	  		  ADC1_Select_SA1();
-	  		  HAL_ADC_Start(&hadc1);
-	  		  HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
-	  		  s1_aceleracion = HAL_ADC_GetValue(&hadc1);
-	  		  HAL_ADC_Stop(&hadc1);
 
-	  		  ADC1_Select_SA2();
-	  		  HAL_ADC_Start(&hadc1);
-	  		  HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
-	  		  s2_aceleracion = HAL_ADC_GetValue(&hadc1);
-	  		  HAL_ADC_Stop(&hadc1);
+		TxData_Inv[0] = 0x0;
+		TxData_Inv[1] = 0x0;
+		TxData_Inv[2] = 0x6;
+		HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
 
-	  #if DEBUG
-	      print("Sensor 1: ");
-	      printValue(s1_aceleracion);
-	      print("");
-	      print("Sensor 2: ");
-	      printValue(s2_aceleracion);
-	      print("");
-	  #endif
-
-	      	// Leemos sensor de freno
-	  		  ADC1_Select_SF();
-	  		  HAL_ADC_Start(&hadc1);
-	  		  HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
-	  		  s_freno = HAL_ADC_GetValue(&hadc1);
-	  		  HAL_ADC_Stop(&hadc1);
-	  #if DEBUG
-	      print("Sensor freno: ");
-	      printValue(s_freno);
-	  #endif
-
-	  		// Calculamos % torque  en función de la posición de los sensores
-	  		s1_aceleracion_aux = (s1_aceleracion - 68) / (6.41 - 0.68);
-	  		if(s1_aceleracion_aux < 0) s1_aceleracion_aux = 0;
-	  		s2_aceleracion_aux = (s2_aceleracion - 18) / (6.56 - 0.18);
-	  		if(s2_aceleracion_aux < 0) s2_aceleracion_aux = 0;
-
-	  #if DEBUG
-	  	print("Sensor % 1: ");
-	      printValue(s1_aceleracion_aux);
-	      print("");
-	      print("Sensor % 2: ");
-	      printValue(s2_aceleracion_aux);
-	      print("");
-	  #endif
-
-	  		// Torque enviado es la media de los dos sensores
-	  		torque_total = (s1_aceleracion_aux + s2_aceleracion_aux) / 2;
-
-	  		// Por debajo de un 10% no acelera y por encima de un 90% esta a tope
-	  		if (torque_total < 5)
-	  		{
-	  		  torque_total = 0;
-	  		}
-	  		else if (torque_total > 90)
-	  		{
-	  		  torque_total = 100;
-	  		}
-
-	  	    // Comprobamos EV 2.3 APPS/Brake Pedal Plausibility Check
-	  	    // En caso de que se esté pisando el freno y mas de un 25% del pedal para. Se resetea
-	  	    // solo si el acelerador vuelve por debajo del 5%
-	  	    if (s_freno > UMBRAL_FRENO_APPS && torque_total > 70)
-	  	    {
-	  	      flag_EV_2_3 = 1;
-	  	    }
-	  	    else if (s_freno < UMBRAL_FRENO_APPS && torque_total < 5)
-	  	    {
-	  	      flag_EV_2_3 = 0;
-	  	    }
-
-	  	    // T11.8.9 Implausibility is defined as a deviation of more than ten percentage points
-	  	    // pedal travel between any of the used APPSs
-	  	    if (abs(s1_aceleracion_aux - s2_aceleracion_aux) > 10)
-	  	    {
-	  	      count_T11_8_9 = count_T11_8_9 + 1;
-	  	      if (count_T11_8_9 * periodo_inv > 100)
-	  	      {
-	  	        flag_T11_8_9 = 1;
-	  	      }
-	  	    }
-	  	    else
-	  	    {
-	  	      count_T11_8_9 = 0;
-	  	      flag_T11_8_9 = 0;
-	  	    }
-
-	  	    if (flag_EV_2_3 || flag_T11_8_9)
-	  	    {
-	  	      torque_total = 0;
-	  	    }
-
-	  #if DEBUG
-	  	    print("Torque total solicitado: ");
-	  	    printValue(torque_total);
-	  #endif
-
-	  	    // Limitación del torque en función de la carga
-	  	    if (v_celda_min < 3500)
-	  	    {
-	  	      if (v_celda_min > 2800)
-	  	      {
-	  	        torque_limitado = torque_total * (1.357 * v_celda_min - 3750) / 1000;
-	  	      }
-	  	      else
-	  	      {
-	  	        torque_limitado = torque_total * 0.05;
-	  	      }
-	  	    }
-	  	    else
-	  	    {
-	  	      torque_limitado = torque_total;
-	  	    }
-
-	  #if DEBUG
-	  	    print("Torque limitado en: ");
-	  	    printValue(torque_limitado);
-	  #endif
-
-	  	    //Envío de torque al inversor
-	  	    TxHeader_Inv.Identifier = rxID_inversor;
-	  	    TxHeader_Inv.DataLength = 3;
-	  	    TxData_Inv[0] = TORQUE;
-	  	    TxData_Inv[1] = ((int)(torque_limitado * TORQUE_CONV_100 / 100.0)) & 0xFF; // bits del 0-7
-	  	    TxData_Inv[2] = ((int)(torque_limitado * TORQUE_CONV_100 / 100.0)) >> 8;   // bits del 8-15
-	  	    HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
-
-	  	    // Envío telemetría aceleración y freno
-	  	    TxHeader_Acu.Identifier = ID_torque_total;
-	  	    TxHeader_Acu.DataLength = 2;
-	  	    TxData_Acu[0] = ((int)torque_limitado) >> 8;
-	  	    TxData_Acu[1] = ((int)torque_limitado);
-	  	    HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &TxHeader_Acu, TxData_Acu);
-
-	  	    s_freno_aux = s_freno;
-	  	    s_freno_aux=(s_freno_aux-121.0)/572.0*100.0;
-	  	    TxHeader_Acu.Identifier = ID_s_freno;
-	  	   	TxHeader_Acu.DataLength = 2;
-	  	   	TxData_Acu[0] = ((int)s_freno_aux) >> 8;
-	  	   	TxData_Acu[1] = ((int)s_freno_aux);
-	  	   	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &TxHeader_Acu, TxData_Acu);
-	  	  }
-
+		HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader_Inv, RxData_Inv);
+		if(RxHeader_Inv.Identifier == TX_STATE_3){
+			state = RxData_Inv[2]>>0x1;
+			if(state == 10){
+				error = RxData_Inv[0];
+			}
+		}
 	  	  // Envío datos telemetría
-	  	  if(DEBUG){
+	  	  if(0){
 	  		  while(HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader_Inv, RxData_Inv) == HAL_OK){
 	  			  if(RxHeader_Inv.Identifier == txID_inversor){
 	  				  switch(RxData_Inv[0]){
 	  				  case DC_BUS_VOLTAGE:
 	  					  TxHeader_Acu.Identifier = ID_dc_bus_voltage;
 	  					  TxHeader_Acu.DataLength = 2;
-	  					  inv_dc_bus_voltage = ((int)RxData_Inv[2] << 8 | (int)RxData_Inv[1]) / CONV_DC_BUS_VOLTAGE;
+	  					  TxHeader_Acu.IdType = FDCAN_EXTENDED_ID;
+	  					  inv_dc_bus_voltage = (int)RxData_Inv[0] << 8;
 	  					  TxData_Acu[0] = inv_dc_bus_voltage >> 8 & 0xFF;
 	  					  TxData_Acu[1] = inv_dc_bus_voltage & 0xFF;
 	  					  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &TxHeader_Acu, TxData_Acu);
@@ -599,6 +429,7 @@ int main(void)
 	  				  case T_MOTOR:
 	  					  TxHeader_Acu.Identifier = ID_t_motor;
 	  					  TxHeader_Acu.DataLength = 2;
+	  					  TxHeader_Acu.IdType = FDCAN_EXTENDED_ID;
 	  					  TxData_Acu[0] = RxData_Inv[2];
 	  					  TxData_Acu[1] = RxData_Inv[1];
 	  					  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &TxHeader_Acu, TxData_Acu);
@@ -607,6 +438,7 @@ int main(void)
 	  				  case T_IGBT:
 	  					  TxHeader_Acu.Identifier = ID_t_igbt;
 	  					  TxHeader_Acu.DataLength = 2;
+	  					  TxHeader_Acu.IdType = FDCAN_EXTENDED_ID;
 	  					  TxData_Acu[0] = RxData_Inv[2];
 	  					  TxData_Acu[1] = RxData_Inv[1];
 	  					  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &TxHeader_Acu, TxData_Acu);
@@ -615,6 +447,7 @@ int main(void)
 	  				  case T_AIR:
 	  					  TxHeader_Acu.Identifier = ID_t_air;
 	  					  TxHeader_Acu.DataLength = 2;
+	  					  TxHeader_Acu.IdType = FDCAN_EXTENDED_ID;
 	  					  TxData_Acu[0] = RxData_Inv[2];
 	  					  TxData_Acu[1] = RxData_Inv[1];
 	  					  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &TxHeader_Acu, TxData_Acu);
@@ -623,6 +456,7 @@ int main(void)
 	  				  case N_ACTUAL:
 	  					  TxHeader_Acu.Identifier = ID_n_actual;
 	  					  TxHeader_Acu.DataLength = 2;
+	  					  TxHeader_Acu.IdType = FDCAN_EXTENDED_ID;
 	  					  TxData_Acu[0] = RxData_Inv[2];
 	  					  TxData_Acu[1] = RxData_Inv[1];
 	  					  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &TxHeader_Acu, TxData_Acu);
@@ -631,6 +465,7 @@ int main(void)
 	  				  case I_ACTUAL:
 	  					  TxHeader_Acu.Identifier = ID_i_actual;
 	  					  TxHeader_Acu.DataLength = 2;
+	  					  TxHeader_Acu.IdType = FDCAN_EXTENDED_ID;
 	  					  TxData_Acu[0] = RxData_Inv[2];
 	  					  TxData_Acu[1] = RxData_Inv[1];
 	  					  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &TxHeader_Acu, TxData_Acu);
@@ -640,17 +475,6 @@ int main(void)
 
 	  				  }
 	  			  }
-	  		  }
-	  	  }
-
-	  	  //Valor tensión celda mínima
-	  	  if(HAL_FDCAN_GetRxMessage(&hfdcan2, FDCAN_RX_FIFO0, &RxHeader_Acu, RxData_Acu)){
-	  		  if(RxHeader_Acu.Identifier == ID_v_celda_min && RxHeader_Acu.DataLength == 2){
-	  			  v_celda_min = ((int)RxData_Acu[0]<<8 | (int)RxData_Acu[1]);
-	  #if DEBUG
-	  		print("Tensión minima de la celdas: ");
-	  		printValue(v_celda_min);
-	  #endif
 	  		  }
 	  	  }
 
@@ -676,21 +500,20 @@ void SystemClock_Config(void)
 
   /** Configure the main internal regulator output voltage
   */
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE0);
 
   while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  RCC_OscInitStruct.HSIState = RCC_HSI_DIV1;
-  RCC_OscInitStruct.HSICalibrationValue = 64;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLM = 4;
-  RCC_OscInitStruct.PLL.PLLN = 12;
-  RCC_OscInitStruct.PLL.PLLP = 2;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLM = 2;
+  RCC_OscInitStruct.PLL.PLLN = 44;
+  RCC_OscInitStruct.PLL.PLLP = 1;
   RCC_OscInitStruct.PLL.PLLQ = 4;
   RCC_OscInitStruct.PLL.PLLR = 2;
   RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_3;
@@ -706,15 +529,15 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2
                               |RCC_CLOCKTYPE_D3PCLK1|RCC_CLOCKTYPE_D1PCLK1;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.SYSCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV1;
-  RCC_ClkInitStruct.APB3CLKDivider = RCC_APB3_DIV1;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB3CLKDivider = RCC_APB3_DIV2;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_APB1_DIV2;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV1;
-  RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV2;
+  RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
   {
     Error_Handler();
   }
@@ -731,14 +554,14 @@ void PeriphCommonClock_Config(void)
   /** Initializes the peripherals clock
   */
   PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_ADC;
-  PeriphClkInitStruct.PLL2.PLL2M = 4;
-  PeriphClkInitStruct.PLL2.PLL2N = 12;
-  PeriphClkInitStruct.PLL2.PLL2P = 5;
+  PeriphClkInitStruct.PLL2.PLL2M = 2;
+  PeriphClkInitStruct.PLL2.PLL2N = 16;
+  PeriphClkInitStruct.PLL2.PLL2P = 2;
   PeriphClkInitStruct.PLL2.PLL2Q = 2;
   PeriphClkInitStruct.PLL2.PLL2R = 2;
   PeriphClkInitStruct.PLL2.PLL2RGE = RCC_PLL2VCIRANGE_3;
   PeriphClkInitStruct.PLL2.PLL2VCOSEL = RCC_PLL2VCOWIDE;
-  PeriphClkInitStruct.PLL2.PLL2FRACN = 0;
+  PeriphClkInitStruct.PLL2.PLL2FRACN = 2950;
   PeriphClkInitStruct.AdcClockSelection = RCC_ADCCLKSOURCE_PLL2;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
   {
@@ -769,7 +592,7 @@ static void MX_ADC1_Init(void)
   */
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
-  hadc1.Init.Resolution = ADC_RESOLUTION_16B;
+  hadc1.Init.Resolution = ADC_RESOLUTION_10B;
   hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc1.Init.LowPowerAutoWait = DISABLE;
@@ -797,7 +620,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_4;
+  sConfig.Channel = ADC_CHANNEL_2;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
@@ -894,26 +717,26 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Init.AutoRetransmission = DISABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
-  hfdcan1.Init.NominalPrescaler = 8;
+  hfdcan1.Init.NominalPrescaler = 6;
   hfdcan1.Init.NominalSyncJumpWidth = 1;
-  hfdcan1.Init.NominalTimeSeg1 = 12;
-  hfdcan1.Init.NominalTimeSeg2 = 13;
+  hfdcan1.Init.NominalTimeSeg1 = 2;
+  hfdcan1.Init.NominalTimeSeg2 = 5;
   hfdcan1.Init.DataPrescaler = 1;
   hfdcan1.Init.DataSyncJumpWidth = 1;
   hfdcan1.Init.DataTimeSeg1 = 1;
   hfdcan1.Init.DataTimeSeg2 = 1;
   hfdcan1.Init.MessageRAMOffset = 0;
-  hfdcan1.Init.StdFiltersNbr = 0;
-  hfdcan1.Init.ExtFiltersNbr = 0;
-  hfdcan1.Init.RxFifo0ElmtsNbr = 0;
+  hfdcan1.Init.StdFiltersNbr = 1;
+  hfdcan1.Init.ExtFiltersNbr = 1;
+  hfdcan1.Init.RxFifo0ElmtsNbr = 32;
   hfdcan1.Init.RxFifo0ElmtSize = FDCAN_DATA_BYTES_8;
-  hfdcan1.Init.RxFifo1ElmtsNbr = 0;
+  hfdcan1.Init.RxFifo1ElmtsNbr = 32;
   hfdcan1.Init.RxFifo1ElmtSize = FDCAN_DATA_BYTES_8;
   hfdcan1.Init.RxBuffersNbr = 0;
   hfdcan1.Init.RxBufferSize = FDCAN_DATA_BYTES_8;
   hfdcan1.Init.TxEventsNbr = 0;
   hfdcan1.Init.TxBuffersNbr = 0;
-  hfdcan1.Init.TxFifoQueueElmtsNbr = 0;
+  hfdcan1.Init.TxFifoQueueElmtsNbr = 32;
   hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
   hfdcan1.Init.TxElmtSize = FDCAN_DATA_BYTES_8;
   if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK)
@@ -921,7 +744,17 @@ static void MX_FDCAN1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN FDCAN1_Init 2 */
-
+  FDCAN_FilterTypeDef sFilterConfig;
+  sFilterConfig.IdType = FDCAN_STANDARD_ID;
+  sFilterConfig.FilterIndex = 0;
+  sFilterConfig.FilterType = FDCAN_FILTER_MASK;
+  sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+  sFilterConfig.FilterID1 = 0x0;
+  sFilterConfig.FilterID2 = 0x0;
+  if (HAL_FDCAN_ConfigFilter(&hfdcan1, &sFilterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE END FDCAN1_Init 2 */
 
 }
@@ -947,26 +780,26 @@ static void MX_FDCAN2_Init(void)
   hfdcan2.Init.AutoRetransmission = DISABLE;
   hfdcan2.Init.TransmitPause = DISABLE;
   hfdcan2.Init.ProtocolException = DISABLE;
-  hfdcan2.Init.NominalPrescaler = 16;
+  hfdcan2.Init.NominalPrescaler = 6;
   hfdcan2.Init.NominalSyncJumpWidth = 1;
-  hfdcan2.Init.NominalTimeSeg1 = 2;
-  hfdcan2.Init.NominalTimeSeg2 = 2;
+  hfdcan2.Init.NominalTimeSeg1 = 10;
+  hfdcan2.Init.NominalTimeSeg2 = 5;
   hfdcan2.Init.DataPrescaler = 1;
   hfdcan2.Init.DataSyncJumpWidth = 1;
   hfdcan2.Init.DataTimeSeg1 = 1;
   hfdcan2.Init.DataTimeSeg2 = 1;
   hfdcan2.Init.MessageRAMOffset = 0;
-  hfdcan2.Init.StdFiltersNbr = 0;
-  hfdcan2.Init.ExtFiltersNbr = 0;
-  hfdcan2.Init.RxFifo0ElmtsNbr = 0;
+  hfdcan2.Init.StdFiltersNbr = 1;
+  hfdcan2.Init.ExtFiltersNbr = 1;
+  hfdcan2.Init.RxFifo0ElmtsNbr = 16;
   hfdcan2.Init.RxFifo0ElmtSize = FDCAN_DATA_BYTES_8;
-  hfdcan2.Init.RxFifo1ElmtsNbr = 0;
+  hfdcan2.Init.RxFifo1ElmtsNbr = 16;
   hfdcan2.Init.RxFifo1ElmtSize = FDCAN_DATA_BYTES_8;
   hfdcan2.Init.RxBuffersNbr = 0;
   hfdcan2.Init.RxBufferSize = FDCAN_DATA_BYTES_8;
   hfdcan2.Init.TxEventsNbr = 0;
   hfdcan2.Init.TxBuffersNbr = 0;
-  hfdcan2.Init.TxFifoQueueElmtsNbr = 0;
+  hfdcan2.Init.TxFifoQueueElmtsNbr = 16;
   hfdcan2.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
   hfdcan2.Init.TxElmtSize = FDCAN_DATA_BYTES_8;
   if (HAL_FDCAN_Init(&hfdcan2) != HAL_OK)
@@ -974,61 +807,18 @@ static void MX_FDCAN2_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN FDCAN2_Init 2 */
-
-  /* USER CODE END FDCAN2_Init 2 */
-
-}
-
-/**
-  * @brief FDCAN3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_FDCAN3_Init(void)
-{
-
-  /* USER CODE BEGIN FDCAN3_Init 0 */
-
-  /* USER CODE END FDCAN3_Init 0 */
-
-  /* USER CODE BEGIN FDCAN3_Init 1 */
-
-  /* USER CODE END FDCAN3_Init 1 */
-  hfdcan3.Instance = FDCAN3;
-  hfdcan3.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
-  hfdcan3.Init.Mode = FDCAN_MODE_NORMAL;
-  hfdcan3.Init.AutoRetransmission = DISABLE;
-  hfdcan3.Init.TransmitPause = DISABLE;
-  hfdcan3.Init.ProtocolException = DISABLE;
-  hfdcan3.Init.NominalPrescaler = 16;
-  hfdcan3.Init.NominalSyncJumpWidth = 1;
-  hfdcan3.Init.NominalTimeSeg1 = 2;
-  hfdcan3.Init.NominalTimeSeg2 = 2;
-  hfdcan3.Init.DataPrescaler = 1;
-  hfdcan3.Init.DataSyncJumpWidth = 1;
-  hfdcan3.Init.DataTimeSeg1 = 1;
-  hfdcan3.Init.DataTimeSeg2 = 1;
-  hfdcan3.Init.MessageRAMOffset = 0;
-  hfdcan3.Init.StdFiltersNbr = 0;
-  hfdcan3.Init.ExtFiltersNbr = 0;
-  hfdcan3.Init.RxFifo0ElmtsNbr = 0;
-  hfdcan3.Init.RxFifo0ElmtSize = FDCAN_DATA_BYTES_8;
-  hfdcan3.Init.RxFifo1ElmtsNbr = 0;
-  hfdcan3.Init.RxFifo1ElmtSize = FDCAN_DATA_BYTES_8;
-  hfdcan3.Init.RxBuffersNbr = 0;
-  hfdcan3.Init.RxBufferSize = FDCAN_DATA_BYTES_8;
-  hfdcan3.Init.TxEventsNbr = 0;
-  hfdcan3.Init.TxBuffersNbr = 0;
-  hfdcan3.Init.TxFifoQueueElmtsNbr = 0;
-  hfdcan3.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
-  hfdcan3.Init.TxElmtSize = FDCAN_DATA_BYTES_8;
-  if (HAL_FDCAN_Init(&hfdcan3) != HAL_OK)
+  FDCAN_FilterTypeDef sFilterConfig;
+  sFilterConfig.IdType = FDCAN_EXTENDED_ID;
+  sFilterConfig.FilterIndex = 0;
+  sFilterConfig.FilterType = FDCAN_FILTER_MASK;
+  sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+  sFilterConfig.FilterID1 = 0x0;
+  sFilterConfig.FilterID2 = 0x0;
+  if (HAL_FDCAN_ConfigFilter(&hfdcan2, &sFilterConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN FDCAN3_Init 2 */
-
-  /* USER CODE END FDCAN3_Init 2 */
+  /* USER CODE END FDCAN2_Init 2 */
 
 }
 
@@ -1044,6 +834,7 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 0 */
 
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
   TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
@@ -1057,7 +848,16 @@ static void MX_TIM1_Init(void)
   htim1.Init.Period = 65535;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
-  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
   if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
   {
     Error_Handler();
@@ -1103,6 +903,86 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 2 */
   HAL_TIM_MspPostInit(&htim1);
+
+}
+
+/**
+  * @brief TIM16 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM16_Init(void)
+{
+
+  /* USER CODE BEGIN TIM16_Init 0 */
+
+  /* USER CODE END TIM16_Init 0 */
+
+  /* USER CODE BEGIN TIM16_Init 1 */
+
+  /* USER CODE END TIM16_Init 1 */
+  htim16.Instance = TIM16;
+  htim16.Init.Prescaler = 2640- 1;
+  htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim16.Init.Period = 10000 - 1;
+  htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim16.Init.RepetitionCounter = 0;
+  htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim16) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM16_Init 2 */
+
+  /* USER CODE END TIM16_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
 
 }
 
@@ -1166,6 +1046,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
@@ -1177,6 +1058,9 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, START_BUTTON_LED_Pin|RTDS_Pin, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(DS18B20_Data_GPIO_Port, DS18B20_Data_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pins : START_BUTTON_LED_Pin RTDS_Pin */
   GPIO_InitStruct.Pin = START_BUTTON_LED_Pin|RTDS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -1184,11 +1068,26 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : DS18B20_Data_Pin */
+  GPIO_InitStruct.Pin = DS18B20_Data_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(DS18B20_Data_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pin : START_BUTTON_Pin */
   GPIO_InitStruct.Pin = START_BUTTON_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(START_BUTTON_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PG9 PG10 */
+  GPIO_InitStruct.Pin = GPIO_PIN_9|GPIO_PIN_10;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF2_FDCAN3;
+  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -1207,6 +1106,11 @@ void printValue(int value){
 
 }
 
+void printHex(uint8_t value){
+	sprintf(uart_msg, "%02X \n\r", value);
+	HAL_UART_Transmit(&huart2,(uint8_t*)uart_msg,strlen(uart_msg),HAL_MAX_DELAY);
+}
+
 
 void ADC1_Select_SA1 (void){
 	ADC_ChannelConfTypeDef sConfig = {0};
@@ -1214,7 +1118,7 @@ void ADC1_Select_SA1 (void){
 	  */
 	sConfig.Channel = ADC_CHANNEL_4;
 	sConfig.Rank = ADC_REGULAR_RANK_1;
-	sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5; //1 CYCLES??? (*%*)
+	sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
 	sConfig.SingleDiff = ADC_SINGLE_ENDED;
 	sConfig.OffsetNumber = ADC_OFFSET_NONE;
 	sConfig.Offset = 0;
@@ -1246,7 +1150,7 @@ void ADC1_Select_SF (void){
 	  */
 	sConfig.Channel = ADC_CHANNEL_2;
 	sConfig.Rank = ADC_REGULAR_RANK_1;
-	sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+	sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLE_5;
 	sConfig.SingleDiff = ADC_SINGLE_ENDED;
 	sConfig.OffsetNumber = ADC_OFFSET_NONE;
 	sConfig.Offset = 0;
@@ -1309,6 +1213,245 @@ void ADC2_Select_RR(void){
 	if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
 	{
 	  Error_Handler();
+	}
+}
+
+void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
+{
+  if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET)
+  {
+    /* Retreive Rx messages from RX FIFO1 */
+    if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &RxHeader_Acu, RxData_Acu) == HAL_OK)
+    {
+		switch (RxHeader_Acu.Identifier){
+			case 0x20://ID_ack_precarga:
+				if(RxData_Acu[0] == 0){
+					precarga_inv = 1;
+					#if DEBUG
+					print("CAN_ACU: Precarga correcta");
+					#endif
+				}
+				break;
+		}
+
+    }
+
+    if (HAL_FDCAN_ActivateNotification(hfdcan, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) != HAL_OK)
+    {
+      /* Notification Error */
+      Error_Handler();
+    }
+  }
+}
+
+uint8_t setTorque(){
+	// Leemos sensores de posición del pedal de acelaración
+	ADC1_Select_SA1();
+	HAL_ADC_Start(&hadc1);
+	HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
+	s1_aceleracion = HAL_ADC_GetValue(&hadc1);
+	HAL_ADC_Stop(&hadc1);
+
+	ADC1_Select_SA2();
+	HAL_ADC_Start(&hadc1);
+	HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
+	s2_aceleracion = HAL_ADC_GetValue(&hadc1);
+	HAL_ADC_Stop(&hadc1);
+
+#if DEBUG
+print("Sensor 1: ");
+printValue(s1_aceleracion);
+print("");
+print("Sensor 2: ");
+printValue(s2_aceleracion);
+print("");
+#endif
+
+	// Leemos sensor de freno
+	ADC1_Select_SF();
+	HAL_ADC_Start(&hadc1);
+	HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
+	s_freno = HAL_ADC_GetValue(&hadc1);
+	HAL_ADC_Stop(&hadc1);
+
+#if DEBUG
+print("Sensor freno: ");
+printValue(s_freno);
+#endif
+
+	// Calculamos % torque  en función de la posición de los sensores
+	s1_aceleracion_aux = (s1_aceleracion - 500) / (7.48 - 5);
+	if(s1_aceleracion_aux < 0) s1_aceleracion_aux = 0;
+	s2_aceleracion_aux = (s2_aceleracion - 482) / (6.59 - 4.82);
+	if(s2_aceleracion_aux < 0) s2_aceleracion_aux = 0;
+
+#if DEBUG
+print("Sensor % 1: ");
+printValue(s1_aceleracion_aux);
+print("");
+print("Sensor % 2: ");
+printValue(s2_aceleracion_aux);
+print("");
+#endif
+
+	// Torque enviado es la media de los dos sensores
+	torque_total = (s1_aceleracion_aux + s2_aceleracion_aux) / 2;
+
+	// Por debajo de un 10% no acelera y por encima de un 90% esta a tope
+	if (torque_total < 5)
+	{
+	  torque_total = 0;
+	}
+	else if (torque_total > 90)
+	{
+	  torque_total = 100;
+	}
+
+    // Comprobamos EV 2.3 APPS/Brake Pedal Plausibility Check
+    // En caso de que se esté pisando el freno y mas de un 25% del pedal para. Se resetea
+	// solo si el acelerador vuelve por debajo del 5%
+    if (s_freno > UMBRAL_FRENO_APPS && torque_total > 25)
+    {
+      print("EV_2_3");
+      flag_EV_2_3 = 1;
+    }
+    else if (s_freno < UMBRAL_FRENO_APPS && torque_total < 5)
+    {
+      flag_EV_2_3 = 0;
+    }
+
+    // T11.8.9 Implausibility is defined as a deviation of more than ten percentage points
+    // pedal travel between any of the used APPSs
+    if (abs(s1_aceleracion_aux - s2_aceleracion_aux) > 10)
+    {
+      count_T11_8_9 = count_T11_8_9 + 1;
+      if (count_T11_8_9 * periodo_inv > 100)
+      {
+    	print("T11.8.9");
+        flag_T11_8_9 = 1;
+      }
+    }
+    else
+    {
+      count_T11_8_9 = 0;
+      flag_T11_8_9 = 0;
+    }
+
+    if (flag_EV_2_3 || flag_T11_8_9)
+    {
+      torque_total = 0;
+    }
+
+#if DEBUG
+print("Torque total solicitado: ");
+printValue(torque_total);
+#endif
+
+    // Limitación del torque en función de la carga
+    /*if (v_celda_min < 3500)
+    {
+      if (v_celda_min > 2800)
+      {
+        torque_limitado = torque_total * (1.357 * v_celda_min - 3750) / 1000;
+      }
+      else
+      {
+        torque_limitado = torque_total * 0.05;
+      }
+    }
+    else
+    {
+      torque_limitado = torque_total;
+    }*/
+
+
+#if 0
+print("Torque limitado en: ");
+printValue(torque_limitado);
+#endif
+
+	torque_total = torque_total * 2.4;
+    // Invertir todos los bits (complemento a uno)
+    uint16_t complement_one = ~torque_total;
+
+    // Sumar 1 para obtener el complemento a dos
+    uint16_t torque_real = complement_one + 1;
+
+
+    // Envío telemetría aceleración y freno
+    /*TxHeader_Acu.Identifier = ID_torque_total;
+    TxHeader_Acu.DataLength = 2;
+    TxData_Acu[0] = ((int)torque_limitado) >> 8;
+    TxData_Acu[1] = ((int)torque_limitado);
+    HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &TxHeader_Acu, TxData_Acu);
+
+    s_freno_aux = s_freno;
+    s_freno_aux=(s_freno_aux-121.0)/572.0*100.0;
+    TxHeader_Acu.Identifier = ID_s_freno;
+   	TxHeader_Acu.DataLength = 2;
+   	TxData_Acu[0] = ((int)s_freno_aux) >> 8;
+   	TxData_Acu[1] = ((int)s_freno_aux);
+   	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &TxHeader_Acu, TxData_Acu);*/
+
+    if(torque_real == 0){
+    	torque_real = 0xFF;
+    }
+#if 1
+print("Torque mandado al inversor: ");
+printHex(torque_real);
+#endif
+	return torque_real;
+}
+
+
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+	if(htim == &htim16){
+		 // ---------- CONTROL DEL INVERSOR ----------
+		if(state == 4){
+			TxHeader_Inv.Identifier = 0x362;
+			TxHeader_Inv.DataLength = 4;
+
+			real_torque = 0;
+
+			TxData_Inv[0] = 0x0;
+			TxData_Inv[1] = 0x0;
+			TxData_Inv[2] = real_torque;
+			TxData_Inv[3] = 0x0;
+			HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
+		}
+		if(state == 6){
+			print("state: torque");
+
+			//Estado TORQUE inversor
+			TxHeader_Inv.Identifier = RX_SETPOINT_1;
+			TxHeader_Inv.DataLength = 3;
+			TxHeader_Inv.IdType = FDCAN_STANDARD_ID;
+
+
+			TxData_Inv[0] = 0x0;
+			TxData_Inv[1] = 0x0;
+			TxData_Inv[2] = 0x6;
+			HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
+
+			//Request TORQUE inversor
+			TxHeader_Inv.Identifier = 0x362;
+			TxHeader_Inv.DataLength = 4;
+
+			//real_torque = setTorque();
+
+			TxData_Inv[0] = 0x0;
+			TxData_Inv[1] = 0x0;
+			TxData_Inv[2] = 0xFF; //torque 0 - 240
+			TxData_Inv[3] = 0xFF; //negative torque
+			HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
+		}
+		if(state == 10){
+			print("state: soft fault");
+			printValue(error);
+		}
+
+
 	}
 }
 /* USER CODE END 4 */
