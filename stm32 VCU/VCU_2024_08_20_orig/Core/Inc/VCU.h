@@ -74,7 +74,7 @@
 #define DELAY_CAN_SEND 10 //Cambiado de 0
 
 #define UMBRAL_FRENO  210 // Valor léido del ADC a partir del cual se considera que el pedal de freno ha sido pulsado
-#define UMBRAL_FRENO_APPS 800
+#define UMBRAL_FRENO_APPS 400
 
 #define TORQUE_CONV_150 32767
 #define TORQUE_CONV_100 21845
@@ -87,6 +87,9 @@ unsigned long periodo_tel = 800; //ms
 // Comprobaciones y flags: 1 listo, 0 en proceso todavía
 int precarga_inv = 0; //0;
 int config_inv_lectura_v = 0; //0;
+int ecu_telemetria = 1;
+int ecu_caja_negra = 1;
+int rpi_pantalla = 1;
 int RTS_inv = 0; //0;
 int BTB_todo = 0; //0
 int BTB_inv_1 = 0;
@@ -94,28 +97,13 @@ int BTB_inv_2 = 0;
 int boton_arranque = 0; //0
 
 // ---------- IDs de los buses CAN ----------
-// IDs CAN Inversor (definidos desde el punto de vista del inversor) - BAMOCAR
+// IDs CAN Inversor (definidos desde el punto de vista del inversor)
 INT32U rxID_inversor = 0x201;
 INT32U txID_inversor = 0x181;
 
-// IDs CAN INVERSOR (definidos desde el punto de vista del inversor) - EPOWERLABS
-INT32U TX_STATE_1 = 0x460;
-INT32U TX_STATE_2 = 0x461;
-INT32U TX_STATE_3 = 0x462;
-INT32U TX_STATE_4 = 0x463;
-INT32U TX_STATE_5 = 0x464;
-INT32U TX_STATE_6 = 0x465;
-INT32U TX_STATE_7 = 0x466;
-INT32U TX_STATE_8 = 0x467;
-INT32U TX_STATE_9 = 0x468;
-
-INT32U RX_SETPOINT_1 = 0x360;
-INT32U RX_SETPOINT_2 = 0x361;
-INT32U RX_SETPOINT_3 = 0x362;
-INT32U RX_SETPOINT_4 = 0x363;
-INT32U RX_SETPOINT_6 = 0x365;
-
 // --------- BMI088 ---------
+#define ACC_CS 37
+#define GYRO_CS 36
 
 // IDs CAN Telemetría Generales
 INT32U ID_RTD_all = 0x80;
