@@ -1,4 +1,3 @@
-<<<<<<< HEAD:stm32 VCU/VCU_2024_08_20_orig/Debug/Core/Src/main.cyclo
 ../Core/Src/main.c:162:5:main	24
 ../Core/Src/main.c:492:6:SystemClock_Config	4
 ../Core/Src/main.c:550:6:PeriphCommonClock_Config	2
@@ -25,26 +24,3 @@
 ../Core/Src/main.c:1247:9:setTorque	14
 ../Core/Src/main.c:1408:6:HAL_TIM_PeriodElapsedCallback	5
 ../Core/Src/main.c:1463:6:Error_Handler	1
-=======
-../Core/Src/main.c:157:5:main	73
-../Core/Src/main.c:668:6:SystemClock_Config	4
-../Core/Src/main.c:727:6:PeriphCommonClock_Config	2
-../Core/Src/main.c:754:13:MX_ADC1_Init	4
-../Core/Src/main.c:822:13:MX_ADC2_Init	3
-../Core/Src/main.c:881:13:MX_FDCAN1_Init	2
-../Core/Src/main.c:934:13:MX_FDCAN2_Init	2
-../Core/Src/main.c:987:13:MX_FDCAN3_Init	2
-../Core/Src/main.c:1040:13:MX_TIM1_Init	6
-../Core/Src/main.c:1114:13:MX_USART2_UART_Init	5
-../Core/Src/main.c:1162:13:MX_GPIO_Init	1
-../Core/Src/main.c:1198:6:print	1
-../Core/Src/main.c:1204:6:printValue	1
-../Core/Src/main.c:1211:6:ADC1_Select_SA1	2
-../Core/Src/main.c:1227:6:ADC1_Select_SA2	2
-../Core/Src/main.c:1243:6:ADC1_Select_SF	2
-../Core/Src/main.c:1259:6:ADC2_Select_FR	2
-../Core/Src/main.c:1273:6:ADC2_Select_FL	2
-../Core/Src/main.c:1287:6:ADC2_Select_RL	2
-../Core/Src/main.c:1301:6:ADC2_Select_RR	2
-../Core/Src/main.c:1320:6:Error_Handler	1
->>>>>>> parent of 9dd0b80 (vcu uploaded):stm32 VCU/VCU_2024_08_20/Debug/Core/Src/main.cyclo
