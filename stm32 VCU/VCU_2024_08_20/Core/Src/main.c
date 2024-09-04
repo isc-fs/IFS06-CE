@@ -294,7 +294,7 @@ print("state : stand by");
  * prescalado 264 (por ejemplo)
  * timer count = 2640000 / 264 = 10000
  */
-  HAL_TIM_Base_Start_IT(&htim16);
+  //HAL_TIM_Base_Start_IT(&htim16);
 
 
   //Estado READY inversor
@@ -1442,9 +1442,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 			TxData_Inv[0] = 0x0;
 			TxData_Inv[1] = 0x0;
-			TxData_Inv[2] = 0xFF; //torque 0 - 240
+			TxData_Inv[2] = 0xFB; //torque 0 - 240
 			TxData_Inv[3] = 0xFF; //negative torque
 			HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
+
+			printValue(TxData_Inv[2]);
 		}
 		if(state == 10){
 			print("state: soft fault");

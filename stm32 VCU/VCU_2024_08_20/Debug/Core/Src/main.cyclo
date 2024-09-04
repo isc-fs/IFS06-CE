@@ -23,4 +23,4 @@
 ../Core/Src/main.c:1219:6:HAL_FDCAN_RxFifo0Callback	6
 ../Core/Src/main.c:1247:9:setTorque	14
 ../Core/Src/main.c:1408:6:HAL_TIM_PeriodElapsedCallback	5
-../Core/Src/main.c:1463:6:Error_Handler	1
+../Core/Src/main.c:1465:6:Error_Handler	1
