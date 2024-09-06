@@ -73,8 +73,8 @@
 #define DELAY_CONFIG 100
 #define DELAY_CAN_SEND 10 //Cambiado de 0
 
-#define UMBRAL_FRENO  210 // Valor léido del ADC a partir del cual se considera que el pedal de freno ha sido pulsado
-#define UMBRAL_FRENO_APPS 800
+#define UMBRAL_FRENO  3000 // Valor léido del ADC a partir del cual se considera que el pedal de freno ha sido pulsado
+#define UMBRAL_FRENO_APPS 3000
 
 //Filtro sensores acelerador
 #define N_LECTURAS 10
@@ -92,7 +92,7 @@ int RTS_inv = 0; //0;
 int BTB_todo = 0; //0
 int BTB_inv_1 = 0;
 int BTB_inv_2 = 0;
-int boton_arranque = 1; //0
+int boton_arranque = 0; //0
 
 // ---------- IDs de los buses CAN ----------
 // IDs CAN Inversor (definidos desde el punto de vista del inversor) - BAMOCAR
