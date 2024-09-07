@@ -1401,7 +1401,7 @@ print("Torque limitado en: ");
 printValue(torque_limitado);
 #endif
 
-	//torque_total = torque_total * 240 / 1000;
+	torque_total = torque_total * 168 / 100;
 	// Invertir todos los bits (complemento a uno)
 	uint16_t complement_one = ~torque_total;
 
