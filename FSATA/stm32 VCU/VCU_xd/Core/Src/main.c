@@ -269,12 +269,12 @@ int main(void)
 
 	}
 
-    if(HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_BUS_OFF, 0) != HAL_OK){
+    /*if(HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_BUS_OFF, 0) != HAL_OK){
 #if DEBUG
 		print("Error al activar NOTIFICACION BUS OFF CAN_INV");
 #endif
 		Error_Handler();
-    }
+    }*/
 
 	//Acumulador
 	if (HAL_FDCAN_Start(&hfdcan2) != HAL_OK) {
@@ -1276,13 +1276,13 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
 	}
 }
 
-void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t ErrorStatusITs) {
+/*void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t ErrorStatusITs) {
     if (hfdcan == &hfdcan2) {
         if ((ErrorStatusITs & FDCAN_IT_BUS_OFF) != RESET) {
             CAN_bus_off_check_reset(hfdcan);
         }
     }
-}
+}*/
 
 int SMA(uint32_t *lecturas, uint8_t *index, uint32_t lectura) {
 	lecturas[*index] = lectura;
@@ -1300,7 +1300,7 @@ uint16_t setTorque() {
 	int s1_aceleracion_filtr = LPF_EMA_Update(&s1_filt, s1_aceleracion);
 	int s2_aceleracion_filtr = LPF_EMA_Update(&s2_filt, s2_aceleracion);
 
-#if 0
+#if 1
 	print("Sensor 1: ");
 	printValue(s1_aceleracion_filtr);
 	print("");
@@ -1329,7 +1329,7 @@ uint16_t setTorque() {
 		s2_aceleracion_aux = 100;
 	}
 
-#if 0
+#if 1
 	print("Sensor % 1: ");
 	printValue(s1_aceleracion_aux);
 	print("");
@@ -1342,7 +1342,7 @@ uint16_t setTorque() {
 	torque_total = (s1_aceleracion_aux + s2_aceleracion_aux) / 2;
 
 	// Por debajo de un 10% no acelera y por encima de un 90% esta a tope
-	if (torque_total < 2) {
+	if (torque_total < 10) {
 		torque_total = 0;
 	} else if (torque_total > 100) {
 		torque_total = 100;
@@ -1408,7 +1408,7 @@ printValue(torque_limitado);
 	// Sumar 1 para obtener el complemento a dos
 	uint16_t torque_real = complement_one + 1;
 
-#if 1
+#if 0
 	print("Torque mandado al inversor: ");
 	printHex(torque_real);
 #endif
@@ -1503,7 +1503,7 @@ if(flag_react == 0){//Si no hay que reactivar el coche manda siempre torque
 			byte_torque_2 = (real_torque >> 8) & 0xFF;
 			TxData_Inv[0] = 0x00;
 			TxData_Inv[1] = 0x00;
-			if(acelera > 0 && frena == 0){
+			/*if(acelera > 0 && frena == 0){
 				acelera++;
 				TxData_Inv[2] = 0xFE;
 				TxData_Inv[3] = 0xFF;
@@ -1526,13 +1526,13 @@ if(flag_react == 0){//Si no hay que reactivar el coche manda siempre torque
 					acelera = 1;
 					frena = 0;
 				}
-			}
-			//TxData_Inv[2] = byte_torque_1;
-			//TxData_Inv[3] = byte_torque_2;
+			}*/
+			TxData_Inv[2] = byte_torque_1;
+			TxData_Inv[3] = byte_torque_2;
 			//TxData_Inv[2] = 0xFE;
 			//TxData_Inv[3] = 0xFF;
 			HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv) ;
-// 			CAN_bus_off_check_reset(&hfdcan1);
+ 			CAN_bus_off_check_reset(&hfdcan1);
 
 			break;
 

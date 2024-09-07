@@ -1,4 +1,4 @@
-../Core/Src/main.c:198:5:main	19
+../Core/Src/main.c:198:5:main	18
 ../Core/Src/main.c:455:6:SystemClock_Config	4
 ../Core/Src/main.c:513:6:PeriphCommonClock_Config	2
 ../Core/Src/main.c:541:13:MX_ADC1_Init	6
@@ -21,10 +21,9 @@
 ../Core/Src/main.c:1180:6:ADC2_Select_RL	2
 ../Core/Src/main.c:1193:6:ADC2_Select_RR	2
 ../Core/Src/main.c:1206:6:HAL_FDCAN_RxFifo0Callback	19
-../Core/Src/main.c:1279:6:HAL_FDCAN_ErrorStatusCallback	3
 ../Core/Src/main.c:1287:5:SMA	2
 ../Core/Src/main.c:1297:10:setTorque	18
-../Core/Src/main.c:1418:6:HAL_TIM_PeriodElapsedCallback	17
+../Core/Src/main.c:1418:6:HAL_TIM_PeriodElapsedCallback	10
 ../Core/Src/main.c:1580:6:SDCard_start	2
 ../Core/Src/main.c:1607:6:CAN_bus_off_check_reset	2
 ../Core/Src/main.c:1615:6:logBufferToSD	6
