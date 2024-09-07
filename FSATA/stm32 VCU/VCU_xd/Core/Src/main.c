@@ -269,6 +269,13 @@ int main(void)
 
 	}
 
+    if(HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_BUS_OFF, 0) != HAL_OK){
+#if DEBUG
+		print("Error al activar NOTIFICACION BUS OFF CAN_INV");
+#endif
+		Error_Handler();
+    }
+
 	//Acumulador
 	if (HAL_FDCAN_Start(&hfdcan2) != HAL_OK) {
 
@@ -1269,6 +1276,14 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
 	}
 }
 
+void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t ErrorStatusITs) {
+    if (hfdcan == &hfdcan2) {
+        if ((ErrorStatusITs & FDCAN_IT_BUS_OFF) != RESET) {
+            CAN_bus_off_check_reset(hfdcan);
+        }
+    }
+}
+
 int SMA(uint32_t *lecturas, uint8_t *index, uint32_t lectura) {
 	lecturas[*index] = lectura;
 	*index = (*index + 1) % N_LECTURAS;
@@ -1480,8 +1495,6 @@ if(flag_react == 0){//Si no hay que reactivar el coche manda siempre torque
 
 			real_torque = setTorque();
 
-			CAN_bus_off_check_reset(&hfdcan1);
-
 			TxHeader_Inv.Identifier = 0x362;
 			TxHeader_Inv.DataLength = 4;
 
@@ -1519,6 +1532,7 @@ if(flag_react == 0){//Si no hay que reactivar el coche manda siempre torque
 			//TxData_Inv[2] = 0xFE;
 			//TxData_Inv[3] = 0xFF;
 			HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv) ;
+// 			CAN_bus_off_check_reset(&hfdcan1);
 
 			break;
 
