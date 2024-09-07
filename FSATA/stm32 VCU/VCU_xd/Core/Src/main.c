@@ -247,8 +247,8 @@ int main(void)
 		Error_Handler();
 	}
 	//Inicializacion filtro paso bajo
-	LPF_EMA_Init(&s1_filt, 0.09f);
-	LPF_EMA_Init(&s2_filt, 0.09f);
+	LPF_EMA_Init(&s1_filt, 0.01f);
+	LPF_EMA_Init(&s2_filt, 0.01f);
 
 	//Inicialización de buses CAN
 	//Inversor
@@ -1461,9 +1461,9 @@ if(flag_react == 0){//Si no hay que reactivar el coche manda siempre torque
 			TxData_Inv[2] = 0x4;
 			HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
 
-			while (state != 4) {
+			//while (state != 4) {
 
-			}
+			//}
 
 
 
@@ -1539,6 +1539,16 @@ if(flag_react == 0){//Si no hay que reactivar el coche manda siempre torque
 		case 10:
 			print("state: soft fault");
 			printValue(error);
+
+			//Estado READY inversor
+			TxHeader_Inv.Identifier = RX_SETPOINT_1;
+			TxHeader_Inv.DataLength = 3;
+			TxHeader_Inv.IdType = FDCAN_STANDARD_ID;
+
+			TxData_Inv[0] = 0x0;
+			TxData_Inv[1] = 0x0;
+			TxData_Inv[2] = 0x3;
+			HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
 			/*switch (error) {
 			case 1:
 				print("Error: Lost msg");
