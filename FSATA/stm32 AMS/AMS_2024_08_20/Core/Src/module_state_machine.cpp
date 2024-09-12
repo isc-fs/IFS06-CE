@@ -19,7 +19,7 @@ BMS_MOD BMS[] = {
 //Here all the BMS get declare, the directions come from Zeva and the LAG of 50, 100 etc is for not asking them voltages at once
 		BMS_MOD(BMS_ID + 00, BMS_MAXV, BMS_MINV, BMS_MAXT, 10, BMS_SHUNT), // 3+3+3+3
 		BMS_MOD(BMS_ID + 10, BMS_MAXV, BMS_MINV, BMS_MAXT, 9, BMS_SHUNT, 50), // 3+5
-		BMS_MOD(BMS_ID + 20, BMS_MAXV, BMS_MINV, BMS_MAXT, 10, BMS_SHUNT, 100), // 5+5
+		//BMS_MOD(BMS_ID + 20, BMS_MAXV, BMS_MINV, BMS_MAXT, 10, BMS_SHUNT, 100), // 5+5
 		BMS_MOD(BMS_ID + 30, BMS_MAXV, BMS_MINV, BMS_MAXT, 9, BMS_SHUNT, 150), // 5+5
 		BMS_MOD(BMS_ID + 40, BMS_MAXV, BMS_MINV, BMS_MAXT, 10, BMS_SHUNT, 200), // 5+5
 		BMS_MOD(BMS_ID + 50, BMS_MAXV, BMS_MINV, BMS_MAXT, 9, BMS_SHUNT, 250), // 5+5
@@ -29,7 +29,7 @@ BMS_MOD BMS[] = {
 		BMS_MOD(BMS_ID + 90, BMS_MAXV, BMS_MINV, BMS_MAXT, 10, BMS_SHUNT, 450), // 5+5
 		};
 
-int BMS_N = 10;
+int BMS_N = 9;
 int MIN_V = 4200;
 uint8_t message_MINV[2] = { 0, 0 }; //Here I'll get the minimun voltages for sending them for telemetry
 int time_sending_minV = 0;      //For checking the interval I send the messages
@@ -65,6 +65,7 @@ char buffer[80];
  ** Descriptions:            Initializes the state machine library
  *********************************************************************************************************/
 void setup_state_machine() {
+	//HAL_GPIO_WritePin(FANS_GPIO_Port, FANS_Pin, GPIO_PIN_RESET);
 	HAL_GPIO_WritePin(AMS_OK_GPIO_Port, AMS_OK_Pin, GPIO_PIN_RESET);
 	HAL_GPIO_WritePin(RELAY_AIR_N_GPIO_Port, RELAY_AIR_N_Pin, GPIO_PIN_RESET);
 	HAL_GPIO_WritePin(RELAY_AIR_P_GPIO_Port, RELAY_AIR_P_Pin, GPIO_PIN_RESET);
@@ -191,14 +192,14 @@ void select_state() {
 		state_precharge = 1;
 		CPU.updateState(CPU_POWER);
 		if ((flag_cpu == CPU_ERROR_COMMUNICATION) && (flag_charger == 1)){
-			state = error; //If I disconnect the charger, error
+			//state = error; //If I disconnect the charger, error
 			print((char*)"CPU");
 		}
 		if (flag_current != Current_OK){
 			//state = error; //If current is too high, error
 		}
 		if(HAL_GPIO_ReadPin(DIGITAL1_GPIO_Port, DIGITAL1_Pin) == GPIO_PIN_RESET){ //SDC IO
-			state = error;
+			//state = error;
 			print((char*)"DIGITAL");
 		}
 		break;

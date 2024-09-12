@@ -99,13 +99,13 @@ bool BMS_MOD::parse(uint32_t id,uint8_t *buf,uint32_t t)
         {
           pos = (m-1)*4 + i;
           cellVoltagemV[pos] = (buf[2*i] << 8) + buf[2*i + 1];
-          if ((cellVoltagemV[pos]>LIMIT_MAX_V ||
+/*          if ((cellVoltagemV[pos]>LIMIT_MAX_V ||
               cellVoltagemV[pos]<LIMIT_MIN_V) &&
               pos<NUM_CELLS)
           {
             flag_error_volt[pos] = flag_error_volt[pos] + 1;
             if (flag_error_volt[pos] >= max_flag) error =   BMS_ERROR_VOLTS;
-          }else flag_error_volt[pos] = 0;
+          }else flag_error_volt[pos] = 0;*/
         }
         MAX_V = cellVoltagemV[0];
         MIN_V = cellVoltagemV[0];
@@ -165,7 +165,7 @@ int BMS_MOD::query(uint32_t time, char *buffer)
     }
     if (TIME_LIM_PLOT>0 && time>time_lim_plotted){
       time_lim_plotted += TIME_LIM_PLOT;
-      //info(buffer);
+      info(buffer);
     }
 
     for(int i = 0; i < NUM_CELLS; i++){

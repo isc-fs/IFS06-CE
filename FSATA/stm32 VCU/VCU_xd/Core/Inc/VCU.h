@@ -73,12 +73,11 @@
 #define DELAY_CONFIG 100
 #define DELAY_CAN_SEND 10 //Cambiado de 0
 
-#define UMBRAL_FRENO  3000 // Valor léido del ADC a partir del cual se considera que el pedal de freno ha sido pulsado
-#define UMBRAL_FRENO_APPS 3000
+#define UMBRAL_FRENO  210 // Valor léido del ADC a partir del cual se considera que el pedal de freno ha sido pulsado
+#define UMBRAL_FRENO_APPS 800
 
-//Filtro sensores acelerador
-#define N_LECTURAS 10
-
+#define TORQUE_CONV_150 32767
+#define TORQUE_CONV_100 21845
 
 // Periodo de recogida y envío de datos
 unsigned long periodo_inv = 200; //ms
@@ -100,16 +99,15 @@ INT32U rxID_inversor = 0x201;
 INT32U txID_inversor = 0x181;
 
 // IDs CAN INVERSOR (definidos desde el punto de vista del inversor) - EPOWERLABS
-#define TX_STATE_1  0x460
-#define TX_STATE_2  0x461
-#define TX_STATE_3  0x462
-#define TX_STATE_4  0x463
-#define TX_STATE_5  0x464
-#define TX_STATE_6  0x465
-#define TX_STATE_7  0x466
-#define TX_STATE_8  0x467
-#define TX_STATE_9  0x468
-
+INT32U TX_STATE_1 = 0x460;
+INT32U TX_STATE_2 = 0x461;
+INT32U TX_STATE_3 = 0x462;
+INT32U TX_STATE_4 = 0x463;
+INT32U TX_STATE_5 = 0x464;
+INT32U TX_STATE_6 = 0x465;
+INT32U TX_STATE_7 = 0x466;
+INT32U TX_STATE_8 = 0x467;
+INT32U TX_STATE_9 = 0x468;
 
 INT32U RX_SETPOINT_1 = 0x360;
 INT32U RX_SETPOINT_2 = 0x361;

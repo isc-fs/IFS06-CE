@@ -61,6 +61,8 @@ HAL_StatusTypeDef module_send_message_NoExtId_CAN1(uint32_t id, uint8_t* data, u
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define FANS_Pin GPIO_PIN_5
+#define FANS_GPIO_Port GPIOC
 #define DIGITAL1_Pin GPIO_PIN_9
 #define DIGITAL1_GPIO_Port GPIOE
 #define AMS_OK_Pin GPIO_PIN_7

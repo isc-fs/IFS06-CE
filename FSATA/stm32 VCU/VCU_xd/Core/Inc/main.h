@@ -77,8 +77,6 @@ void Error_Handler(void);
 #define SUSPENSION_FL_GPIO_Port GPIOF
 #define SUSPENSION_FR_Pin GPIO_PIN_14
 #define SUSPENSION_FR_GPIO_Port GPIOF
-#define MICROSD_DET_Pin GPIO_PIN_15
-#define MICROSD_DET_GPIO_Port GPIOF
 #define DS18B20_Data_Pin GPIO_PIN_8
 #define DS18B20_Data_GPIO_Port GPIOE
 #define PWM_FAN1_Pin GPIO_PIN_9
