@@ -37,7 +37,6 @@ void Temperatures_MOD::info(char *buffer)
 {
   if(getUARTState() == HAL_UART_STATE_READY) //Send the message just if there is a serial por connected
   {
-	if(MODULEID != 0x530 && MODULEID != 0x520){
 	print((char*)"\n***********************");
 	print((char*)"     Temperatures");
     print((char*)"***********************");
@@ -59,55 +58,6 @@ void Temperatures_MOD::info(char *buffer)
      	printnl(buffer);
     }
     print((char*)"]");
-    if(MODULEID == 0x510){
-    	MODULEID = 0x520;
-    	print((char*)"\n***********************");
-    	print((char*)"     Temperatures");
-        print((char*)"***********************");
-        sprintf(buffer, " - ERROR:     %i", error);
-        print(buffer);
-        sprintf(buffer, " - CAN ID:    0x%lx", MODULEID);
-        print(buffer);
-        sprintf(buffer, " - MAX T =    %i ºC", MAX_T);
-        print(buffer);
-        sprintf(buffer, " - MIN T =    %i ºC", MIN_T);
-        print(buffer);
-        sprintf(buffer, " - LIM T =    %i ºC", LIMIT_MAX_T);
-        print((char*)"-----------------------");
-        sprintf(buffer, "Temperatures (ºC): [%i", cellTemperature[0]);
-        printnl(buffer);
-        for (int i = 1 ; i < 38; i++)
-        {
-        	sprintf(buffer, ", %i", cellTemperature[i]);
-         	printnl(buffer);
-        }
-        print((char*)"]");
-
-    	MODULEID = 0x530;
-    	print((char*)"\n***********************");
-    	print((char*)"     Temperatures");
-        print((char*)"***********************");
-        sprintf(buffer, " - ERROR:     %i", error);
-        print(buffer);
-        sprintf(buffer, " - CAN ID:    0x%lx", MODULEID);
-        print(buffer);
-        sprintf(buffer, " - MAX T =    %i ºC", MAX_T);
-        print(buffer);
-        sprintf(buffer, " - MIN T =    %i ºC", MIN_T);
-        print(buffer);
-        sprintf(buffer, " - LIM T =    %i ºC", LIMIT_MAX_T);
-        print((char*)"-----------------------");
-        sprintf(buffer, "Temperatures (ºC): [%i", cellTemperature[0]);
-        printnl(buffer);
-        for (int i = 1 ; i < 38; i++)
-        {
-        	sprintf(buffer, ", %i", cellTemperature[i]);
-         	printnl(buffer);
-        }
-        print((char*)"]");
-        MODULEID = 0x510;
-    }
-	  }
 
 
   }
@@ -116,7 +66,7 @@ void Temperatures_MOD::info(char *buffer)
 
 // ********************************************************************************************************
 // **Function name:           parse
-// **Descriptions:            Function for parsing the received data via CAN protocol
+// **Descriptions:            Function for parsing the received data via CAN protocl
 // **********************************************************************************************************
 bool Temperatures_MOD::parse(uint32_t id, uint8_t *buf, uint32_t t)
 {
@@ -216,7 +166,7 @@ int Temperatures_MOD::query(uint32_t time, char *buffer)
 
     for(int i = 0; i<38; i++){
     	if(cellTemperature[i] > 65){
-    		//error = 2;
+    		error = 2;
     	}
     }
 
@@ -229,7 +179,7 @@ int Temperatures_MOD::query(uint32_t time, char *buffer)
   if (TIME_LIM_PLOT > 0 && time > time_lim_plotted)
   {
     time_lim_plotted += TIME_LIM_PLOT;
-    //info(buffer);
+    info(buffer);
   }
 
 /*     if(time > time_lim_sended)

@@ -17,7 +17,7 @@
 
 // ********************************************************************************************************
 // **Function name:           CPU_MOD
-// **Descriptions:            Initialization function of the class
+// **Descriptions:            Initialization function of teh class
 // ********************************************************************************************************
 CPU_MOD::CPU_MOD(uint32_t _ID_send, uint32_t _ID_recv, int _LAG) { /////////////////////////Habia un _LAG=0
     CANID_send = _ID_send;
