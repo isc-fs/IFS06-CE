@@ -247,8 +247,8 @@ int main(void)
 		Error_Handler();
 	}
 	//Inicializacion filtro paso bajo
-	LPF_EMA_Init(&s1_filt, 0.01f);
-	LPF_EMA_Init(&s2_filt, 0.01f);
+	LPF_EMA_Init(&s1_filt, 0.2f);
+	LPF_EMA_Init(&s2_filt, 0.2f);
 
 	//Inicialización de buses CAN
 	//Inversor
@@ -379,6 +379,7 @@ int main(void)
 
 #endif
 
+#if !CALIBRATION
 	//Espera a que se pulse el botón de arranque mientras se pisa el freno
 	while (boton_arranque == 0) {
 
@@ -402,6 +403,7 @@ int main(void)
 			}
 		}
 	}
+#endif
 
 	// Activar READY-TO-DRIVE-SOUND (RTDS) durante 2s
 #if DEBUG
@@ -1213,7 +1215,6 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
 				switch (RxHeader_Inv.Identifier) {
 				case TX_STATE_3:
 					state = RxData_Inv[2] >> 0x1;
-					printValue(state);
 					if (state == 10) {
 						error = RxData_Inv[0];
 					}
@@ -1300,7 +1301,7 @@ uint16_t setTorque() {
 	int s1_aceleracion_filtr = LPF_EMA_Update(&s1_filt, s1_aceleracion);
 	int s2_aceleracion_filtr = LPF_EMA_Update(&s2_filt, s2_aceleracion);
 
-#if 1
+#if 0
 	print("Sensor 1: ");
 	printValue(s1_aceleracion_filtr);
 	print("");
@@ -1329,7 +1330,7 @@ uint16_t setTorque() {
 		s2_aceleracion_aux = 100;
 	}
 
-#if 1
+#if CALIBRATION
 	print("Sensor % 1: ");
 	printValue(s1_aceleracion_aux);
 	print("");
@@ -1339,12 +1340,17 @@ uint16_t setTorque() {
 #endif
 
 	// Torque enviado es la media de los dos sensores
-	torque_total = (s1_aceleracion_aux + s2_aceleracion_aux) / 2;
+	if(s1_aceleracion_aux > 8 && s2_aceleracion_aux > 8){
+		torque_total = (s1_aceleracion_aux + s2_aceleracion_aux) / 2;
+	}
+	else{
+		torque_total = 0;
+	}
 
 	// Por debajo de un 10% no acelera y por encima de un 90% esta a tope
 	if (torque_total < 10) {
 		torque_total = 0;
-	} else if (torque_total > 100) {
+	} else if (torque_total > 90) {
 		torque_total = 100;
 	}
 
@@ -1363,10 +1369,10 @@ uint16_t setTorque() {
 	// pedal travel between any of the used APPSs
 	if (abs(s1_aceleracion_aux - s2_aceleracion_aux) > 10) {
 
-		if (HAL_GetTick() - last_time_t_11_8 > 100) {
+		//if (HAL_GetTick() - last_time_t_11_8 > 100) {
 			print("T11.8.9");
 			flag_T11_8_9 = 1;
-		}
+		//}
 
 	} else {
 		last_time_t_11_8 = HAL_GetTick();
@@ -1374,7 +1380,7 @@ uint16_t setTorque() {
 	}
 
 	if (flag_EV_2_3 || flag_T11_8_9) {
-		torque_total = 0;
+		//torque_total = 0;
 	}
 
 #if 0
@@ -1401,7 +1407,16 @@ print("Torque limitado en: ");
 printValue(torque_limitado);
 #endif
 
-	torque_total = torque_total * 168 / 100;
+	//torque_total = torque_total * 240 / 100;
+	if(torque_total >= 10){
+		torque_total = (torque_total*240/90 - 2400/90)*90/100;
+	}
+
+	/*if(torque_total < 0){
+		torque_total = 0;
+	}*/
+
+
 	// Invertir todos los bits (complemento a uno)
 	uint16_t complement_one = ~torque_total;
 
