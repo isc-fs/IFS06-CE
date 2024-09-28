@@ -179,6 +179,8 @@ uint16_t setTorque(void);
 int SMA(uint32_t *lecturas, uint8_t *index, uint32_t lectura);
 
 uint8_t flag_react = 0;
+uint8_t flag_undervoltage = 0;
+uint8_t rtds_count = 0;
 
 int acelera = 1;
 int frena = 0;
@@ -1208,7 +1210,6 @@ void ADC2_Select_RR(void) {
 void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
 	if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET) {
 		/* Retreive Rx messages from RX FIFO0 */
-
 		if (hfdcan->Instance == FDCAN1) {
 			if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader_Inv,
 					RxData_Inv) == HAL_OK) {
@@ -1409,7 +1410,7 @@ printValue(torque_limitado);
 
 	//torque_total = torque_total * 240 / 100;
 	if(torque_total >= 10){
-		torque_total = (torque_total*240/90 - 2400/90)*90/100;
+		torque_total = (torque_total*240/90 - 2400/90)*(100/100);
 	}
 
 	/*if(torque_total < 0){
@@ -1447,15 +1448,38 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 		//Estado TORQUE
 if(flag_react == 0){//Si no hay que reactivar el coche manda siempre torque
+		if (flag_undervoltage == 0){
+			TxHeader_Inv.Identifier = RX_SETPOINT_1;
+			TxHeader_Inv.DataLength = 3;
+			TxHeader_Inv.IdType = FDCAN_STANDARD_ID;
 
-		TxHeader_Inv.Identifier = RX_SETPOINT_1;
-		TxHeader_Inv.DataLength = 3;
-		TxHeader_Inv.IdType = FDCAN_STANDARD_ID;
+			TxData_Inv[0] = 0x0;
+			TxData_Inv[1] = 0x0;
+			TxData_Inv[2] = 0x6;
+			HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
+		}
+		else{
+			if (s_freno > UMBRAL_FRENO){
 
-		TxData_Inv[0] = 0x0;
-		TxData_Inv[1] = 0x0;
-		TxData_Inv[2] = 0x6;
-		HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
+				if (rtds_count == 0){
+					HAL_GPIO_WritePin(RTDS_GPIO_Port, RTDS_Pin, GPIO_PIN_SET);
+					rtds_count += 1;
+				}
+
+			}
+			else{
+				if (rtds_count <= 100 && rtds_count != 0){
+					rtds_count += 1;
+				}
+				else if (rtds_count > 100){
+					HAL_GPIO_WritePin(RTDS_GPIO_Port, RTDS_Pin, GPIO_PIN_RESET);
+					flag_undervoltage = 0;
+					rtds_count = 0;
+				}
+
+			}
+		}
+
 
 
 }
@@ -1564,6 +1588,7 @@ if(flag_react == 0){//Si no hay que reactivar el coche manda siempre torque
 			TxData_Inv[1] = 0x0;
 			TxData_Inv[2] = 0x3;
 			HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv, TxData_Inv);
+			flag_react = 1;
 			/*switch (error) {
 			case 1:
 				print("Error: Lost msg");
@@ -1578,7 +1603,9 @@ if(flag_react == 0){//Si no hay que reactivar el coche manda siempre torque
 			}*/
 
 			if (inv_dc_bus_voltage < 60) {
-
+				flag_undervoltage = 1;
+			}
+			/*
 				//Estado STAND BY inversor
 				while (state != 3) {
 
@@ -1590,11 +1617,18 @@ if(flag_react == 0){//Si no hay que reactivar el coche manda siempre torque
 
 					TxData_Inv[0] = 0x0;
 					TxData_Inv[1] = 0x0;
+					TxData_Inv[2] = 0x1;
+					HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv,TxData_Inv);
+					TxData_Inv[0] = 0x0;
+					TxData_Inv[1] = 0x0;
+					TxData_Inv[2] = 0x2;
+					HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv,TxData_Inv);
+					TxData_Inv[0] = 0x0;
+					TxData_Inv[1] = 0x0;
 					TxData_Inv[2] = 0x3;
-					HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv,
-							TxData_Inv);
+					HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader_Inv,TxData_Inv);
 				}
-			}
+			}*/
 
 			break;
 		}
